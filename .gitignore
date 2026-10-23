@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+.venv/
+EEM_处理结果/
+~$*.xlsx
