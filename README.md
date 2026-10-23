@@ -4,7 +4,7 @@
 
 ## 先看示例
 
-下面使用仓库内的实测 [`黑.xlsx`](examples/input/黑.xlsx)。左右两张 EEM 图使用相同的 0–600 色标。色标上限只影响显示，XLSX 中数值**没有截断**。
+下面使用仓库内的实测 [`黑.xlsx`](examples/input/黑.xlsx)。EEM 图横轴为 Em、纵轴为 Ex，处理前后共用蓝—青—绿—黄—红色带及 0–400 色标。色标上限只影响显示，XLSX 中数值**没有截断**。
 
 ![原始与插值后 EEM 对比及五区积分](examples/black_before_after.png)
 

@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
+from matplotlib.patheffects import withStroke
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -25,17 +26,24 @@ def main():
                          "axes.spines.top": False, "axes.spines.right": False})
     fig = plt.figure(figsize=(13.2, 4.65), layout="constrained")
     axes = [fig.add_subplot(1, 3, i + 1) for i in range(3)]
-    vmax = 600.0
+    vmax = 400.0
     for ax, data, title in zip(axes[:2], [original, processed],
                                ["A   Before interpolation", "B   After interpolation"]):
-        image = ax.pcolormesh(EX, EM, np.maximum(data, 0), shading="nearest",
-                              cmap="viridis", norm=Normalize(vmin=0, vmax=vmax), rasterized=True)
-        ax.axvline(250, color="white", alpha=.7, lw=.9, ls="--")
-        ax.plot([200, 250], [330, 330], color="white", alpha=.7, lw=.9, ls="--")
-        ax.plot([200, 250], [380, 380], color="white", alpha=.7, lw=.9, ls="--")
-        ax.plot([250, 500], [380, 380], color="white", alpha=.7, lw=.9, ls="--")
-        ax.set(xlabel="Excitation Ex (nm)", ylabel="Emission Em (nm)", title=title,
-               xlim=(200, 500), ylim=(250, 600))
+        display = np.maximum(data, 0).T
+        image = ax.pcolormesh(EM, EX, display, shading="nearest",
+                              cmap="jet", norm=Normalize(vmin=0, vmax=vmax), rasterized=True)
+        ax.contour(EM, EX, display, levels=[50, 100, 150, 200, 300, 400],
+                   colors="black", alpha=.32, linewidths=.5)
+        ax.axhline(250, color="white", lw=1.5)
+        ax.axvline(380, color="white", lw=1.5)
+        ax.plot([330, 330], [min(EX), 250], color="white", lw=1.5)
+        for name, x, y in [("I", 290, 225), ("II", 355, 225), ("III", 460, 225),
+                           ("IV", 315, 320), ("V", 470, 320)]:
+            ax.text(x, y, name, color="white", ha="center", va="center",
+                    fontsize=11, fontweight="bold",
+                    path_effects=[withStroke(linewidth=1.4, foreground="black")])
+        ax.set(xlabel="Emission Em (nm)", ylabel="Excitation Ex (nm)", title=title,
+               xlim=(min(EM), max(EM)), ylim=(min(EX), max(EX)))
     colorbar = fig.colorbar(image, ax=axes[:2], location="bottom", shrink=.75, pad=.12)
     colorbar.set_label(f"Fluorescence intensity (display clipped at {vmax:.0f})")
     ax = axes[2]
