@@ -27,7 +27,7 @@ def exact_region_area(ex_min, ex_max, em_min, em_max):
 
 
 def test():
-    old_ex, old_em, old_x = read_eem(ROOT / "examples/expected/黑_插值后.xlsx")
+    old_ex, old_em, old_x = read_eem(ROOT / "examples/expected/示例数据_插值后.xlsx")
     old_result, old_areas = calculate_fri(old_x, old_ex, old_em)
     assert old_areas == [4000, 2500, 11000, 8450, 47800]
     expected_p = [0.18153525188254935, 0.3286844561702139,

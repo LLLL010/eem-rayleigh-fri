@@ -39,9 +39,9 @@ def display_grid(ex, em, values, scale=4):
 
 
 def main():
-    ex, em, raw_values = read_eem(ROOT / "examples/input/黑.xlsx")
+    ex, em, raw_values = read_eem(ROOT / "examples/input/示例数据.xlsx")
     processed_ex, processed_em, corrected_values = read_eem(
-        ROOT / "examples/expected/黑_插值后.xlsx")
+        ROOT / "examples/expected/示例数据_插值后.xlsx")
     original = np.asarray(raw_values)
     processed = np.asarray(corrected_values)
     if ex != processed_ex or em != processed_em:
@@ -87,7 +87,7 @@ def main():
                 ha="center", va="bottom", fontsize=9)
     ax.set(xlabel="FRI region", ylabel="Normalized contribution (%)",
            title="C   Five-region integration", ylim=(0, max(proportions) * 1.18))
-    path = ROOT / "examples/black_before_after.png"
+    path = ROOT / "examples/example_before_after.png"
     fig.savefig(path, dpi=220, bbox_inches="tight")
     plt.close(fig)
     print(path)

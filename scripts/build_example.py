@@ -1,4 +1,4 @@
-"""Rebuild the published 黑.xlsx example outputs."""
+"""Rebuild the published anonymized EEM example outputs."""
 from __future__ import annotations
 
 import sys
@@ -10,18 +10,18 @@ from eem_tool import calculate_fri, interpolate, read_eem, save_matrix, save_sum
 
 
 def main():
-    target = ROOT / "examples" / "input" / "黑.xlsx"
+    target = ROOT / "examples" / "input" / "示例数据.xlsx"
     ex, em, raw = read_eem(target)
     corrected, counts = interpolate(raw, ex, em)
     result = ROOT / "examples" / "expected"
     result.mkdir(parents=True, exist_ok=True)
-    save_matrix(result / "黑_插值后.xlsx", corrected, ex, em)
+    save_matrix(result / "示例数据_插值后.xlsx", corrected, ex, em)
     phi, areas = calculate_fri(corrected, ex, em)
-    save_summary(result / "黑_五区积分.xlsx",
+    save_summary(result / "示例数据_五区积分.xlsx",
                  [[target.name] + phi], [[target.name, "成功", ""] + counts],
                  [(target.name, areas)])
     print("input:", target)
-    print("processed:", result / "黑_插值后.xlsx")
+    print("processed:", result / "示例数据_插值后.xlsx")
     print("Phi:", phi[:5])
     print("P:", phi[10:15])
     print("mask counts:", counts)

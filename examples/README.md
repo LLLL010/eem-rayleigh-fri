@@ -1,19 +1,19 @@
-# 黑.xlsx 示例
+# 示例数据
 
 文件关系：
 
 | 文件 | 内容 |
 |---|---|
-| [`input/黑.xlsx`](input/黑.xlsx) | 原始 EEM，`Sheet1` 第一行 Ex，第一列 Em；可复制到单独文件夹试运行 |
-| [`expected/黑_插值后.xlsx`](expected/黑_插值后.xlsx) | 散射窗口插值后的绘图矩阵 |
-| [`expected/黑_五区积分.xlsx`](expected/黑_五区积分.xlsx) | 五区原始积分、面积归一化积分、占比、运行记录和方法 |
-| [`black_before_after.png`](black_before_after.png) | 处理前后 EEM 和五区占比的对比图 |
+| [`input/示例数据.xlsx`](input/示例数据.xlsx) | EEM 数值矩阵，`Sheet1` 第一行 Ex，第一列 Em；可复制到单独文件夹试运行 |
+| [`expected/示例数据_插值后.xlsx`](expected/示例数据_插值后.xlsx) | 散射窗口插值后的绘图矩阵 |
+| [`expected/示例数据_五区积分.xlsx`](expected/示例数据_五区积分.xlsx) | 五区原始积分、面积归一化积分、占比、运行记录和方法 |
+| [`example_before_after.png`](example_before_after.png) | 处理前后 EEM 和五区占比的对比图 |
 
 ## 自己运行并核对
 
-1. 新建一个空文件夹，只把 `input/黑.xlsx` 与 [Windows 免安装包 v1.1.0](../dist/eem-rayleigh-fri-win64-v1.1.0.zip)解压得到的 `启动处理.bat`、`eem_tool.exe` 复制进去。
+1. 新建一个空文件夹，只把 `input/示例数据.xlsx` 与 [Windows 免安装包 v1.1.0](../dist/eem-rayleigh-fri-win64-v1.1.0.zip)解压得到的 `启动处理.bat`、`eem_tool.exe` 复制进去。
 2. 双击批处理文件。输出会出现在这个空文件夹的 `EEM_处理结果` 下。
-3. 输出矩阵应与 `expected/黑_插值后.xlsx` 相同；汇总表的一行应与 `expected/黑_五区积分.xlsx` 一致。
+3. 输出矩阵应与 `expected/示例数据_插值后.xlsx` 相同；汇总表的一行应与 `expected/示例数据_五区积分.xlsx` 一致。
 
 不要把 `expected` 中的两个 XLSX 与输入 XLSX 放在同一个顶层文件夹里运行：程序会扫描该文件夹里的**所有** XLSX，它们会被再次当成输入。
 
