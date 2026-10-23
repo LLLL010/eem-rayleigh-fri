@@ -22,15 +22,15 @@ REGIONS = [
 ]
 
 
-def read_matrix(path: Path) -> list[list[float]]:
+def read_eem(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
     book = load_workbook(path, read_only=True, data_only=True)
     try:
-        if "Sheet1" not in book.sheetnames:
-            raise ValueError("缺少 Sheet1")
-        sheet = book["Sheet1"]
-        if sheet.max_row != 177 or sheet.max_column != 32:
-            raise ValueError(f"Sheet1 应为 177 行 × 32 列，实际为 {sheet.max_row} × {sheet.max_column}")
-        rows = list(sheet.iter_rows(min_row=1, max_row=177, min_col=1, max_col=32, values_only=True))
+        sheet = book["Sheet1"] if "Sheet1" in book.sheetnames else book.worksheets[0]
+        if sheet.max_row < 3 or sheet.max_column < 3:
+            raise ValueError("至少需要两个 Ex 和两个 Em 波长点")
+        if sheet.max_row * sheet.max_column > 1_000_000:
+            raise ValueError("工作表过大；请移除数据区外的格式或内容")
+        rows = list(sheet.iter_rows(values_only=True))
     finally:
         book.close()
     if rows[0][0] not in (None, ""):
@@ -41,13 +41,28 @@ def read_matrix(path: Path) -> list[list[float]]:
         return float(value)
     ex = [numeric(v, f"第一行第 {j+2} 列") for j, v in enumerate(rows[0][1:])]
     em = [numeric(row[0], f"第一列第 {i+2} 行") for i, row in enumerate(rows[1:])]
-    if ex != EX or em != EM:
-        raise ValueError("波长轴需为 Ex 200–500/10 nm、Em 250–600/2 nm")
-    return [[numeric(v, f"第 {i+2} 行第 {j+2} 列") for j, v in enumerate(row[1:])]
-            for i, row in enumerate(rows[1:])]
+    x = [[numeric(v, f"第 {i+2} 行第 {j+2} 列") for j, v in enumerate(row[1:])]
+         for i, row in enumerate(rows[1:])]
+    if all(ex[i] > ex[i+1] for i in range(len(ex)-1)):
+        ex.reverse()
+        x = [row[::-1] for row in x]
+    if all(em[i] > em[i+1] for i in range(len(em)-1)):
+        em.reverse()
+        x.reverse()
+    if not all(ex[i] < ex[i+1] for i in range(len(ex)-1)) or not all(
+            em[i] < em[i+1] for i in range(len(em)-1)):
+        raise ValueError("Ex、Em 轴必须分别严格单调，不能有重复或乱序波长")
+    if not (ex[0] < 250 < ex[-1] and em[0] < 330 < 380 < em[-1]):
+        raise ValueError("五区积分需要 Ex 跨过 250 nm，Em 同时跨过 330 和 380 nm")
+    return ex, em, x
 
 
-def line_fill(axis: list[int], values: list[float], keep: list[bool]) -> list[float]:
+def read_matrix(path: Path) -> list[list[float]]:
+    """Compatibility helper for the bundled example plot."""
+    return read_eem(path)[2]
+
+
+def line_fill(axis: list[float], values: list[float], keep: list[bool]) -> list[float]:
     known_axis = [a for a, ok in zip(axis, keep) if ok]
     known_values = [v for v, ok in zip(values, keep) if ok]
     if len(known_axis) < 2:
@@ -68,55 +83,139 @@ def line_fill(axis: list[int], values: list[float], keep: list[bool]) -> list[fl
     return result
 
 
-def interpolate(x: list[list[float]]):
-    first = [[abs(em - ex) <= 12 for ex in EX] for em in EM]
-    second = [[abs(em - (2 * ex + 4)) <= 20 for ex in EX] for em in EM]
-    mask = [[first[i][j] or second[i][j] for j in range(len(EX))] for i in range(len(EM))]
+def interpolate(x: list[list[float]], ex_axis=EX, em_axis=EM):
+    if len(x) != len(em_axis) or any(len(row) != len(ex_axis) for row in x):
+        raise ValueError("强度矩阵与 Ex、Em 波长轴的长度不一致")
+    first = [[abs(em - ex) <= 12 for ex in ex_axis] for em in em_axis]
+    second = [[abs(em - (2 * ex + 4)) <= 20 for ex in ex_axis] for em in em_axis]
+    mask = [[first[i][j] or second[i][j] for j in range(len(ex_axis))] for i in range(len(em_axis))]
     saturated = sum(value == 9999.9 for row in x for value in row)
     if any(x[i][j] == 9999.9 and not mask[i][j]
-           for i in range(len(EM)) for j in range(len(EX))):
+           for i in range(len(em_axis)) for j in range(len(ex_axis))):
         raise ValueError("散射窗口外发现 9999.9 饱和值，未自动填补")
-    vertical = [line_fill(EM, [x[i][j] for i in range(len(EM))],
-                          [not mask[i][j] for i in range(len(EM))]) for j in range(len(EX))]
-    horizontal = [line_fill(EX, x[i], [not m for m in mask[i]]) for i in range(len(EM))]
+    vertical = [line_fill(em_axis, [x[i][j] for i in range(len(em_axis))],
+                          [not mask[i][j] for i in range(len(em_axis))]) for j in range(len(ex_axis))]
+    horizontal = [line_fill(ex_axis, x[i], [not m for m in mask[i]]) for i in range(len(em_axis))]
     filled = [[max(0.0, (vertical[j][i] + horizontal[i][j]) / 2) if mask[i][j] else x[i][j]
-               for j in range(len(EX))] for i in range(len(EM))]
+               for j in range(len(ex_axis))] for i in range(len(em_axis))]
     counts = [sum(map(sum, first)),
-              sum(second[i][j] and not first[i][j] for i in range(len(EM)) for j in range(len(EX))),
+              sum(second[i][j] and not first[i][j] for i in range(len(em_axis)) for j in range(len(ex_axis))),
               sum(map(sum, mask)), saturated]
     return filled, counts
 
 
-def integrate(x: list[list[float]]) -> list[float]:
-    z = [[max(0.0, x[i][j]) if em > ex else 0.0 for j, ex in enumerate(EX)]
-         for i, em in enumerate(EM)]
-    phi = []
-    for cols, rows in REGIONS:
-        total = 0.0
-        for ri, i in enumerate(rows):
-            row_weight = 0.5 if ri in (0, len(rows) - 1) else 1.0
-            for cj, j in enumerate(cols):
-                col_weight = 0.5 if cj in (0, len(cols) - 1) else 1.0
-                total += z[i][j] * row_weight * col_weight
-        phi.append(total * 10 * 2)
-    normalized = [p * m for p, m in zip(phi, MF)]
+REGION_PLANES = [
+    [(-1, 0, 250), (0, -1, 330), (-1, 1, 0)],
+    [(-1, 0, 250), (0, 1, -330), (0, -1, 380), (-1, 1, 0)],
+    [(-1, 0, 250), (0, 1, -380), (-1, 1, 0)],
+    [(1, 0, -250), (0, -1, 380), (-1, 1, 0)],
+    [(1, 0, -250), (0, 1, -380), (-1, 1, 0)],
+]
+
+
+def clip_polygon(poly, plane):
+    """Clip (Ex, Em, intensity) vertices against one wavelength half-plane."""
+    if not poly:
+        return []
+    a, b, c = plane
+    result = []
+    previous = poly[-1]
+    fprevious = a * previous[0] + b * previous[1] + c
+    for current in poly:
+        fcurrent = a * current[0] + b * current[1] + c
+        inside_previous, inside_current = fprevious >= 0, fcurrent >= 0
+        if inside_previous != inside_current:
+            t = fprevious / (fprevious - fcurrent)
+            result.append(tuple(previous[k] + t * (current[k] - previous[k]) for k in range(3)))
+        if inside_current:
+            result.append(current)
+        previous, fprevious = current, fcurrent
+    return result
+
+
+def polygon_moments(poly):
+    """Exact area and piecewise-linear intensity volume of a clipped triangle."""
+    area, volume = 0.0, 0.0
+    for k in range(1, len(poly) - 1):
+        p, q, r = poly[0], poly[k], poly[k + 1]
+        triangle_area = abs((q[0] - p[0]) * (r[1] - p[1]) -
+                            (q[1] - p[1]) * (r[0] - p[0])) / 2
+        area += triangle_area
+        volume += triangle_area * (p[2] + q[2] + r[2]) / 3
+    return area, volume
+
+
+def generic_region_integrals(x, ex_axis, em_axis):
+    """Split cells into triangles so FRI cuts need not coincide with grid points."""
+    areas = [[] for _ in range(5)]
+    volumes = [[] for _ in range(5)]
+    z = [[max(0.0, x[i][j]) if em > ex else 0.0
+          for j, ex in enumerate(ex_axis)] for i, em in enumerate(em_axis)]
+    for i in range(len(em_axis) - 1):
+        for j in range(len(ex_axis) - 1):
+            p00 = (ex_axis[j], em_axis[i], z[i][j])
+            p10 = (ex_axis[j + 1], em_axis[i], z[i][j + 1])
+            p11 = (ex_axis[j + 1], em_axis[i + 1], z[i + 1][j + 1])
+            p01 = (ex_axis[j], em_axis[i + 1], z[i + 1][j])
+            for triangle in ((p00, p10, p11), (p00, p11, p01)):
+                for region, planes in enumerate(REGION_PLANES):
+                    poly = triangle
+                    for plane in planes:
+                        poly = clip_polygon(poly, plane)
+                        if len(poly) < 3:
+                            break
+                    if len(poly) >= 3:
+                        area, volume = polygon_moments(poly)
+                        if area:
+                            areas[region].append(area)
+                            volumes[region].append(volume)
+    return [math.fsum(v) for v in volumes], [math.fsum(a) for a in areas]
+
+
+def calculate_fri(x: list[list[float]], ex_axis=EX, em_axis=EM):
+    if len(x) != len(em_axis) or any(len(row) != len(ex_axis) for row in x):
+        raise ValueError("强度矩阵与 Ex、Em 波长轴的长度不一致")
+    if list(ex_axis) == EX and list(em_axis) == EM:
+        # Preserve the already published outputs for the original instrument grid.
+        z = [[max(0.0, x[i][j]) if em > ex else 0.0 for j, ex in enumerate(EX)]
+             for i, em in enumerate(EM)]
+        phi = []
+        for cols, rows in REGIONS:
+            total = 0.0
+            for ri, i in enumerate(rows):
+                row_weight = 0.5 if ri in (0, len(rows) - 1) else 1.0
+                for cj, j in enumerate(cols):
+                    col_weight = 0.5 if cj in (0, len(cols) - 1) else 1.0
+                    total += z[i][j] * row_weight * col_weight
+            phi.append(total * 10 * 2)
+        areas = AREAS
+    else:
+        phi, areas = generic_region_integrals(x, ex_axis, em_axis)
+    if any(a <= 0 for a in areas):
+        raise ValueError("扫描范围内至少一个 FRI 区域没有面积")
+    mf = [sum(areas) / a for a in areas]
+    normalized = [p * m for p, m in zip(phi, mf)]
     total = sum(normalized)
     if total <= 0 or not math.isfinite(total):
         raise ValueError("面积归一化积分总量不为正")
-    return phi + normalized + [v / total for v in normalized] + [total]
+    return phi + normalized + [v / total for v in normalized] + [total], areas
 
 
-def save_matrix(path: Path, x: list[list[float]]):
+def integrate(x: list[list[float]], ex_axis=EX, em_axis=EM) -> list[float]:
+    return calculate_fri(x, ex_axis, em_axis)[0]
+
+
+def save_matrix(path: Path, x: list[list[float]], ex_axis=EX, em_axis=EM):
     book = Workbook()
     sheet = book.active
     sheet.title = "Sheet1"
-    sheet.append([None] + EX)
-    for em, row in zip(EM, x):
+    sheet.append([None] + list(ex_axis))
+    for em, row in zip(em_axis, x):
         sheet.append([em] + row)
     book.save(path)
 
 
-def save_summary(path: Path, results, log):
+def save_summary(path: Path, results, log, area_rows=None):
     book = Workbook()
     sheet = book.active
     sheet.title = "积分结果"
@@ -132,18 +231,21 @@ def save_summary(path: Path, results, log):
     sheet = book.create_sheet("方法")
     sheet.append(["项目", "规则"])
     for row in [
-        ("输入", "Sheet1：列 Ex=200–500 nm/10；行 Em=250–600 nm/2"),
+        ("输入", "Sheet1 或首个工作表：首行 Ex、首列 Em；单调数值波长轴，可使用不同网格点数和间隔"),
         ("插值", "一阶 |Em−Ex|≤12 nm；二阶 |Em−(2Ex+4)|≤20 nm；沿 Ex 与 Em 双向线性插值取平均，插值负数截 0"),
-        ("积分", "插值矩阵中负数及 Em≤Ex 对积分记 0；各区二维梯形积分，边半权，角四分之一权"),
-        ("面积归一化", "PhiN_i=Phi_i×(73750/区域面积_i)；P_i=PhiN_i/sum(PhiN_i)"),
+        ("积分", "负数及 Em≤Ex 记 0；原仪器网格沿用二维梯形法，其他网格以三角网格线性插值并按边界裁剪积分"),
+        ("面积归一化", "PhiN_i=Phi_i×(本文件各区域总面积/本文件区域面积_i)；P_i=PhiN_i/sum(PhiN_i)"),
         ("分区边界", "I: Ex≤250/Em≤330；II: Ex≤250/330–380；III: Ex≤250/Em≥380；IV: Ex≥250/Em≤380；V: Ex≥250/Em≥380"),
-        ("用途", "插值点是估计值，输出矩阵适合绘图；定量结果与早先零值掩膜积分不可混用"),
+        ("用途", "插值点是估计值；不同扫描范围的 FRI 比例不可直接比较，应先统一波长范围"),
     ]:
         sheet.append(row)
     sheet = book.create_sheet("分区面积")
-    sheet.append(["区域", "面积_nm2", "MF"])
-    for name, area, mf in zip("I II III IV V".split(), AREAS, MF):
-        sheet.append([name, area, mf])
+    sheet.append(["文件名", "区域", "面积_nm2", "MF"])
+    if area_rows is None:
+        area_rows = [("", AREAS)]
+    for filename, areas in area_rows:
+        for name, area in zip("I II III IV V".split(), areas):
+            sheet.append([filename, name, area, sum(areas) / area])
     book.save(path)
 
 
@@ -160,20 +262,21 @@ def main(input_dir: Path) -> int:
     output = input_dir / "EEM_处理结果"
     matrix_dir = output / "01_插值矩阵"
     matrix_dir.mkdir(parents=True, exist_ok=True)
-    results, log = [], []
+    results, log, area_rows = [], [], []
     for path in files:
         print(f"处理：{path.name}", flush=True)
         try:
-            x = read_matrix(path)
-            corrected, counts = interpolate(x)
-            values = integrate(corrected)
-            save_matrix(matrix_dir / path.name, corrected)
+            ex_axis, em_axis, x = read_eem(path)
+            corrected, counts = interpolate(x, ex_axis, em_axis)
+            values, areas = calculate_fri(corrected, ex_axis, em_axis)
+            save_matrix(matrix_dir / path.name, corrected, ex_axis, em_axis)
             results.append([path.name] + values)
+            area_rows.append((path.name, areas))
             log.append([path.name, "成功", ""] + counts)
         except Exception as exc:
             print(f"  失败：{exc}", flush=True)
             log.append([path.name, "失败", str(exc), None, None, None, None])
-    save_summary(output / "02_五区积分汇总.xlsx", results, log)
+    save_summary(output / "02_五区积分汇总.xlsx", results, log, area_rows)
     failures = sum(row[1] == "失败" for row in log)
     print(f"完成：{len(results)} 成功，{failures} 失败。\n输出目录：{output}")
     return 1 if failures else 0
