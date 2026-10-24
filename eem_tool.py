@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from eem_readers import read_csv_eem
 
 
 EX = list(range(200, 501, 10))
@@ -22,7 +23,7 @@ REGIONS = [
 ]
 
 
-def read_eem(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
+def read_xlsx_eem(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
     book = load_workbook(path, read_only=True, data_only=True)
     try:
         sheet = book["Sheet1"] if "Sheet1" in book.sheetnames else book.worksheets[0]
@@ -43,6 +44,22 @@ def read_eem(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
     em = [numeric(row[0], f"第一列第 {i+2} 行") for i, row in enumerate(rows[1:])]
     x = [[numeric(v, f"第 {i+2} 行第 {j+2} 列") for j, v in enumerate(row[1:])]
          for i, row in enumerate(rows[1:])]
+    return ex, em, x
+
+
+def read_eem(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
+    """Read a standard workbook or a supported CSV matrix."""
+    if path.suffix.lower() == ".xlsx":
+        ex, em, x = read_xlsx_eem(path)
+    elif path.suffix.lower() == ".csv":
+        ex, em, x = read_csv_eem(path)
+    else:
+        raise ValueError("支持的输入后缀为 .xlsx、.csv")
+    if len(ex) < 2 or len(em) < 2 or len(x) != len(em) or any(len(row) != len(ex) for row in x):
+        raise ValueError("强度矩阵须为至少 2×2，行数对应 Em、列数对应 Ex")
+    if any(not math.isfinite(v) for v in ex + em) or any(
+            not math.isfinite(v) for row in x for v in row):
+        raise ValueError("波长或强度矩阵含非有限数值")
     if all(ex[i] > ex[i+1] for i in range(len(ex)-1)):
         ex.reverse()
         x = [row[::-1] for row in x]
@@ -231,7 +248,7 @@ def save_summary(path: Path, results, log, area_rows=None):
     sheet = book.create_sheet("方法")
     sheet.append(["项目", "规则"])
     for row in [
-        ("输入", "Sheet1 或首个工作表：首行 Ex、首列 Em；单调数值波长轴，可使用不同网格点数和间隔"),
+        ("输入", "标准 XLSX/CSV：首行 Ex、首列 Em；可识别的岛津与 PicoQuant 原始 CSV；波长轴可使用不同点数和间隔"),
         ("插值", "一阶 |Em−Ex|≤12 nm；二阶 |Em−(2Ex+4)|≤20 nm；沿 Ex 与 Em 双向线性插值取平均，插值负数截 0"),
         ("积分", "负数及 Em≤Ex 记 0；原仪器网格沿用二维梯形法，其他网格以三角网格线性插值并按边界裁剪积分"),
         ("面积归一化", "PhiN_i=Phi_i×(本文件各区域总面积/本文件区域面积_i)；P_i=PhiN_i/sum(PhiN_i)"),
@@ -254,10 +271,11 @@ def main(input_dir: Path) -> int:
         print(f"输入文件夹不存在：{input_dir}")
         return 2
     files = sorted((p for p in input_dir.iterdir() if p.is_file()
-                    and p.suffix.lower() == ".xlsx" and not p.name.startswith("~$")),
+                    and p.suffix.lower() in (".xlsx", ".csv")
+                    and not p.name.startswith("~$")),
                    key=lambda p: p.name)
     if not files:
-        print("当前文件夹顶层没有 .xlsx 文件")
+        print("当前文件夹顶层没有 .xlsx 或 .csv 文件")
         return 2
     output = input_dir / "EEM_处理结果"
     matrix_dir = output / "01_插值矩阵"
@@ -269,7 +287,8 @@ def main(input_dir: Path) -> int:
             ex_axis, em_axis, x = read_eem(path)
             corrected, counts = interpolate(x, ex_axis, em_axis)
             values, areas = calculate_fri(corrected, ex_axis, em_axis)
-            save_matrix(matrix_dir / path.name, corrected, ex_axis, em_axis)
+            output_name = path.name if path.suffix.lower() == ".xlsx" else path.name + ".xlsx"
+            save_matrix(matrix_dir / output_name, corrected, ex_axis, em_axis)
             results.append([path.name] + values)
             area_rows.append((path.name, areas))
             log.append([path.name, "成功", ""] + counts)
