@@ -1,12 +1,13 @@
 # 三维荧光 EEM：瑞利散射插值与五区积分
 
-把一个文件夹中的三维荧光数据批量处理成可绘图的矩阵，并生成五区荧光区域积分（FRI）结果。Windows 用户下载工具包、复制到数据文件夹、双击运行即可；支持 XLSX 和 CSV，无需编写代码。
+把一个文件夹中的三维荧光数据批量处理成可绘图的矩阵，并生成五区荧光区域积分（FRI）、BIX、FI、HIX 和特征峰结果。Windows 用户下载工具包、复制到数据文件夹、双击运行即可；支持 XLSX 和 CSV，无需编写代码。
 
 ## 工具能做什么
 
 1. **读取 EEM**：识别标准行列式 XLSX/CSV，以及已验证的岛津 RF 系列直接导出 CSV；按实际波长读取不同点数和不等间隔的 Em、Ex 轴。
 2. **处理瑞利散射**：定位一阶和二阶瑞利散射窗口，用窗口外的数据沿 Em、Ex 两个方向线性插值，生成新的 EEM 矩阵。
 3. **计算五区积分**：在插值后的矩阵上计算各区原始积分 `Phi`、面积归一化积分 `PhiN` 和占比 `P`，集中写入一个 XLSX。
+4. **提取常用荧光指标**：计算 BIX、FI、HIX，以及 A、B、C、M、T 特征峰强度；A、C、M 峰同时记录峰值所在 Em。
 
 ![示例 EEM 处理前后及五区占比](examples/example_before_after.png)
 
@@ -14,7 +15,7 @@
 
 ## 三步运行（Windows 64 位）
 
-1. 打开 [Windows 工具包 v1.2.0](dist/eem-rayleigh-fri-win64-v1.2.0.zip)，在文件页面点击 **Download raw file**，下载并解压。
+1. 打开 [Windows 工具包 v1.3.0](dist/eem-rayleigh-fri-win64-v1.3.0.zip)，在文件页面点击 **Download raw file**，下载并解压。
 2. 将 `eem_tool.exe` 和 `启动处理.bat` 一起复制到存放 EEM 数据的文件夹。该文件夹可同时放多个 `.xlsx` 和 `.csv`。
 3. 双击 `启动处理.bat`。处理完毕后打开自动生成的 `EEM_处理结果` 文件夹。
 
@@ -40,7 +41,7 @@
 ```text
 EEM_处理结果/
 ├─ 01_插值矩阵/          每个输入对应一个可绘图 XLSX
-└─ 02_五区积分汇总.xlsx  所有样本的积分及处理记录
+└─ 02_五区积分汇总.xlsx  所有样本的积分、荧光指标及处理记录
 ```
 
 `01_插值矩阵` 中的 XLSX 与标准输入方向相同：**第一行 Ex、第一列 Em**，其余为处理后的强度。CSV 的结果文件名会保留 `.csv`，再加 `.xlsx`，便于对应原文件。
@@ -54,7 +55,7 @@ EEM_处理结果/
 | `P_I`～`P_V` | 面积修正后各区占总量的比例；五区之和为 1 |
 | `PhiN_total` | 五区面积修正积分之和 |
 
-`运行记录` 说明每个文件的处理状态和插值点数；`分区面积` 列出每个样本各区域的面积及倍增系数。某个文件失败时，在 `运行记录` 的“说明”列查看原因。
+`荧光指标` 工作表给出 BIX、FI、HIX 和 A/B/C/M/T 峰强度；`运行记录` 说明每个文件的处理状态和插值点数；`分区面积` 列出每个样本各区域的面积及倍增系数。某个文件失败时，在 `运行记录` 的“说明”列查看原因。
 
 ## 处理和计算方法
 
@@ -72,8 +73,10 @@ EEM_处理结果/
 
 对于示例仪器的原始网格，积分使用二维梯形法；对于其他波长网格，按照真实坐标拆分网格、沿分区边界裁剪并积分。每区的面积修正系数为 `MF_i = 五区总面积 / 第 i 区面积`，因此 `PhiN_i = Phi_i × MF_i`，`P_i = PhiN_i / ΣPhiN_i`。**原始积分大小与占比排序可以不同**，因为五区面积不同。[使用说明](使用说明.md)包含更多输入与计算细节。
 
+**荧光指标。** 在散射插值后的矩阵上计算；缺少精确波长点时，按原网格线性插值。BIX = `F(310,380)/F(310,430)`；FI 采用 `F(370,470)/F(370,520)` 版本；HIX 采用 Ex 254 nm 时 Em 435–480 nm 积分除以 Em 300–345 nm 与 435–480 nm 两段积分之和。A/M/C 峰在固定 Ex 下的指定 Em 范围取最大值，B/T 峰取固定波长点。完整峰位、公式和指标缺值规则见[使用说明](使用说明.md)。定义参考 [Huguet 等的 BIX](https://www.sciencedirect.com/science/article/pii/S0146638009000655)、[Ohno 的 HIX](https://pubs.acs.org/doi/10.1021/es0155276)及 [USGS 荧光指标与特征峰汇总](https://pubs.usgs.gov/publication/tm1D11/full)。
+
 本工具执行散射窗口插值和 FRI；比较不同仪器或扫描设置的结果时，先使用相同波长范围。空白扣除、内滤效应等实验预处理应在输入前完成。
 
 ## 源码
 
-入口为 [`eem_tool.py`](eem_tool.py)，CSV 解析在 [`eem_readers.py`](eem_readers.py)。使用源码需要 Python 3 和 [`requirements.txt`](requirements.txt) 中的依赖；例如在数据文件夹运行 `python /path/to/eem_tool.py`，也可以把数据文件夹路径作为第一个参数传入。示例结果可用 [`scripts/build_example.py`](scripts/build_example.py) 重建。
+入口为 [`eem_tool.py`](eem_tool.py)，CSV 解析在 [`eem_readers.py`](eem_readers.py)，荧光指标计算在 [`eem_metrics.py`](eem_metrics.py)。使用源码需要 Python 3.10 或更新版本，以及 [`requirements.txt`](requirements.txt) 中的依赖；例如在数据文件夹运行 `python /path/to/eem_tool.py`，也可以把数据文件夹路径作为第一个参数传入。示例结果可用 [`scripts/build_example.py`](scripts/build_example.py) 重建。

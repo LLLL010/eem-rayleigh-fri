@@ -11,7 +11,8 @@ from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from eem_tool import main, read_eem
+from eem_tool import interpolate, main, read_eem
+from eem_metrics import METRIC_HEADERS, calculate_metrics
 
 
 def write_csv(path, header, axis, matrix, *, delimiter=",", preamble=None):
@@ -66,6 +67,19 @@ def test():
                                            [0.18153525188254935, 0.3286844561702139,
                                             0.13662650346003324, 0.2872406087016183,
                                             0.06591317978558511]))
+            metric_rows = list(book["荧光指标"].values)
+            assert metric_rows[0] == tuple(METRIC_HEADERS)
+            assert len(metric_rows) == 4
+            corrected, _ = interpolate(source, ex, em)
+            expected_metrics = calculate_metrics(corrected, ex, em)
+            for row in metric_rows[1:]:
+                assert row[0] in {path.name for path in (standard, shimadzu, picoquant)}
+                for key, actual in zip(METRIC_HEADERS[1:], row[1:]):
+                    expected = expected_metrics[key]
+                    if isinstance(expected, float):
+                        assert math.isclose(actual, expected, abs_tol=1e-9)
+                    else:
+                        assert actual == expected or (actual is None and expected == "")
         finally:
             book.close()
         print("CSV standard, Shimadzu and PicoQuant inputs passed")

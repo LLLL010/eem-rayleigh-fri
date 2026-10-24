@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from eem_tool import calculate_fri, interpolate, read_eem, save_matrix, save_summary
+from eem_metrics import calculate_metrics
 
 
 def main():
@@ -19,7 +20,7 @@ def main():
     phi, areas = calculate_fri(corrected, ex, em)
     save_summary(result / "示例数据_五区积分.xlsx",
                  [[target.name] + phi], [[target.name, "成功", ""] + counts],
-                 [(target.name, areas)])
+                 [(target.name, areas)], [(target.name, calculate_metrics(corrected, ex, em))])
     print("input:", target)
     print("processed:", result / "示例数据_插值后.xlsx")
     print("Phi:", phi[:5])

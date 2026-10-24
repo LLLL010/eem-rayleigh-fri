@@ -8,6 +8,7 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from eem_readers import read_csv_eem
+from eem_metrics import METRIC_HEADERS, calculate_metrics
 
 
 EX = list(range(200, 501, 10))
@@ -232,7 +233,7 @@ def save_matrix(path: Path, x: list[list[float]], ex_axis=EX, em_axis=EM):
     book.save(path)
 
 
-def save_summary(path: Path, results, log, area_rows=None):
+def save_summary(path: Path, results, log, area_rows=None, metric_rows=None):
     book = Workbook()
     sheet = book.active
     sheet.title = "积分结果"
@@ -241,6 +242,10 @@ def save_summary(path: Path, results, log, area_rows=None):
                  [f"P_{i}" for i in "I II III IV V".split()] + ["PhiN_total"])
     for row in results:
         sheet.append(row)
+    sheet = book.create_sheet("荧光指标")
+    sheet.append(METRIC_HEADERS)
+    for filename, metrics in metric_rows or []:
+        sheet.append([filename] + [metrics[key] for key in METRIC_HEADERS[1:]])
     sheet = book.create_sheet("运行记录")
     sheet.append(["文件名", "状态", "说明", "一阶点数", "二阶点数", "插值点数", "饱和点数"])
     for row in log:
@@ -253,6 +258,13 @@ def save_summary(path: Path, results, log, area_rows=None):
         ("积分", "负数及 Em≤Ex 记 0；原仪器网格沿用二维梯形法，其他网格以三角网格线性插值并按边界裁剪积分"),
         ("面积归一化", "PhiN_i=Phi_i×(本文件各区域总面积/本文件区域面积_i)；P_i=PhiN_i/sum(PhiN_i)"),
         ("分区边界", "I: Ex≤250/Em≤330；II: Ex≤250/330–380；III: Ex≤250/Em≥380；IV: Ex≥250/Em≤380；V: Ex≥250/Em≥380"),
+        ("荧光指标数据", "在瑞利散射插值后的矩阵计算；负强度记 0；非测量波长在原波长网格内线性插值，不外推"),
+        ("BIX", "F(Ex310,Em380)/F(Ex310,Em430)；Huguet et al. 2009"),
+        ("FI_470_520", "F(Ex370,Em470)/F(Ex370,Em520)；使用 470/520 nm 版本，不是早期 450/500 nm 版本"),
+        ("HIX_Ohno", "Ex254 nm；H=Em435–480 nm 积分，L=Em300–345 nm 积分；HIX=H/(L+H)；Ohno 2002 归一化版本"),
+        ("Peak_B、Peak_T", "B=F(Ex275,Em310)，T=F(Ex275,Em340)"),
+        ("Peak_A、Peak_M、Peak_C", "固定 Ex 下按 Em 区间取峰值及峰位：A=Ex260/Em380–460；M=Ex312/Em380–420；C=Ex350/Em420–480 nm"),
+        ("指标缺值", "所需波长不在扫描范围，或比值分母为 0 时对应单元格留空；具体项见荧光指标的备注列"),
         ("用途", "插值点是估计值；不同扫描范围的 FRI 比例不可直接比较，应先统一波长范围"),
     ]:
         sheet.append(row)
@@ -280,22 +292,24 @@ def main(input_dir: Path) -> int:
     output = input_dir / "EEM_处理结果"
     matrix_dir = output / "01_插值矩阵"
     matrix_dir.mkdir(parents=True, exist_ok=True)
-    results, log, area_rows = [], [], []
+    results, log, area_rows, metric_rows = [], [], [], []
     for path in files:
         print(f"处理：{path.name}", flush=True)
         try:
             ex_axis, em_axis, x = read_eem(path)
             corrected, counts = interpolate(x, ex_axis, em_axis)
             values, areas = calculate_fri(corrected, ex_axis, em_axis)
+            metrics = calculate_metrics(corrected, ex_axis, em_axis)
             output_name = path.name if path.suffix.lower() == ".xlsx" else path.name + ".xlsx"
             save_matrix(matrix_dir / output_name, corrected, ex_axis, em_axis)
             results.append([path.name] + values)
             area_rows.append((path.name, areas))
+            metric_rows.append((path.name, metrics))
             log.append([path.name, "成功", ""] + counts)
         except Exception as exc:
             print(f"  失败：{exc}", flush=True)
             log.append([path.name, "失败", str(exc), None, None, None, None])
-    save_summary(output / "02_五区积分汇总.xlsx", results, log, area_rows)
+    save_summary(output / "02_五区积分汇总.xlsx", results, log, area_rows, metric_rows)
     failures = sum(row[1] == "失败" for row in log)
     print(f"完成：{len(results)} 成功，{failures} 失败。\n输出目录：{output}")
     return 1 if failures else 0
