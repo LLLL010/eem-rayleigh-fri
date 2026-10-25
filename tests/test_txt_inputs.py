@@ -21,7 +21,9 @@ def test():
         "Sample:\t'Synthetic",
         "Model:\tF-4600 FL Spectrophotometer",
         "EX Start WL:\t205.0 nm",
+        "EX End WL:\t480.0 nm",
         "EM Start WL:\t245.0 nm",
+        "EM End WL:\t610.0 nm",
         "Peaks",
         "1\t265.0/340.0\t999.0",
         "",
@@ -49,6 +51,14 @@ def test():
             assert book["运行记录"].cell(2, 2).value == "成功"
         finally:
             book.close()
+        source.write_text(source.read_text(encoding="utf-8").replace(
+            "EX Start WL:\t205.0 nm", "EX Start WL:\t999.0 nm"), encoding="utf-8")
+        try:
+            read_eem(source)
+        except ValueError as exc:
+            assert "EX 数据段波长范围与仪器参数不一致" in str(exc)
+        else:
+            raise AssertionError("mismatched Hitachi metadata was accepted")
     print("Hitachi TXT nonstandard-grid batch test passed")
 
 

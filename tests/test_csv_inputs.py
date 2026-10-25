@@ -53,15 +53,29 @@ def test():
             assert close_matrix([actual_ex], [ex]), path
             assert close_matrix([actual_em], [em]), path
             assert close_matrix(actual, source), path
+        limited_ex = [250, 280, 310, 370, 450]
+        limited_em = [380, 400, 430, 470, 520, 550]
+        limited_x = [[1 + excitation / 200 + wavelength / 100
+                      for excitation in limited_ex] for wavelength in limited_em]
+        limited_shimadzu = folder / "shimadzu-limited.csv"
+        write_csv(limited_shimadzu, limited_em, limited_ex,
+                  [[limited_x[i][j] for i in range(len(limited_em))]
+                   for j in range(len(limited_ex))])
+        actual_ex, actual_em, actual = read_eem(limited_shimadzu)
+        assert actual_ex == limited_ex and actual_em == limited_em
+        assert close_matrix(actual, limited_x)
         assert main(folder) == 0
         result = folder / "EEM_处理结果"
-        for path in (standard, shimadzu, picoquant):
+        for path in (standard, shimadzu, picoquant, limited_shimadzu):
             assert (result / "01_插值矩阵" / (path.name + ".xlsx")).exists()
         book = load_workbook(result / "02_五区积分汇总.xlsx", read_only=True, data_only=True)
         try:
             rows = list(book["积分结果"].iter_rows(min_row=2, values_only=True))
-            assert len(rows) == 3
+            assert len(rows) == 4
             for row in rows:
+                if row[0] == limited_shimadzu.name:
+                    assert all(value is None for value in row[1:])
+                    continue
                 assert all(math.isclose(a, b, rel_tol=0, abs_tol=1e-9)
                            for a, b in zip(row[11:16],
                                            [0.18153525188254935, 0.3286844561702139,
@@ -69,10 +83,12 @@ def test():
                                             0.06591317978558511]))
             metric_rows = list(book["荧光指标"].values)
             assert metric_rows[0] == tuple(METRIC_HEADERS)
-            assert len(metric_rows) == 4
+            assert len(metric_rows) == 5
             corrected, _ = interpolate(source, ex, em)
             expected_metrics = calculate_metrics(corrected, ex, em)
             for row in metric_rows[1:]:
+                if row[0] == limited_shimadzu.name:
+                    continue
                 assert row[0] in {path.name for path in (standard, shimadzu, picoquant)}
                 for key, actual in zip(METRIC_HEADERS[1:], row[1:]):
                     expected = expected_metrics[key]

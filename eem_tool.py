@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
-from eem_readers import read_csv_eem, read_hitachi_txt
+from eem_readers import read_text_eem
 from eem_metrics import METRIC_HEADERS, calculate_metrics
 
 
@@ -49,15 +49,13 @@ def read_xlsx_eem(path: Path) -> tuple[list[float], list[float], list[list[float
 
 
 def read_eem(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
-    """Read a standard workbook, supported CSV, or Hitachi text export."""
+    """Read a standard workbook or a supported delimited text export."""
     if path.suffix.lower() == ".xlsx":
         ex, em, x = read_xlsx_eem(path)
-    elif path.suffix.lower() == ".csv":
-        ex, em, x = read_csv_eem(path)
-    elif path.suffix.lower() == ".txt":
-        ex, em, x = read_hitachi_txt(path)
+    elif path.suffix.lower() in (".csv", ".txt", ".dat"):
+        ex, em, x = read_text_eem(path)
     else:
-        raise ValueError("支持的输入后缀为 .xlsx、.csv、.txt")
+        raise ValueError("支持的输入后缀为 .xlsx、.csv、.txt、.dat")
     if len(ex) < 2 or len(em) < 2 or len(x) != len(em) or any(len(row) != len(ex) for row in x):
         raise ValueError("强度矩阵须为至少 2×2，行数对应 Em、列数对应 Ex")
     if any(not math.isfinite(v) for v in ex + em) or any(
@@ -72,8 +70,6 @@ def read_eem(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
     if not all(ex[i] < ex[i+1] for i in range(len(ex)-1)) or not all(
             em[i] < em[i+1] for i in range(len(em)-1)):
         raise ValueError("Ex、Em 轴必须分别严格单调，不能有重复或乱序波长")
-    if not (ex[0] < 250 < ex[-1] and em[0] < 330 < 380 < em[-1]):
-        raise ValueError("五区积分需要 Ex 跨过 250 nm，Em 同时跨过 330 和 380 nm")
     return ex, em, x
 
 
@@ -225,6 +221,10 @@ def integrate(x: list[list[float]], ex_axis=EX, em_axis=EM) -> list[float]:
     return calculate_fri(x, ex_axis, em_axis)[0]
 
 
+def has_full_fri_range(ex_axis: list[float], em_axis: list[float]) -> bool:
+    return ex_axis[0] < 250 < ex_axis[-1] and em_axis[0] < 330 < 380 < em_axis[-1]
+
+
 def save_matrix(path: Path, x: list[list[float]], ex_axis=EX, em_axis=EM):
     book = Workbook()
     sheet = book.active
@@ -255,7 +255,7 @@ def save_summary(path: Path, results, log, area_rows=None, metric_rows=None):
     sheet = book.create_sheet("方法")
     sheet.append(["项目", "规则"])
     for row in [
-        ("输入", "标准 XLSX/CSV：首行 Ex、首列 Em；岛津/PicoQuant CSV；日立 F-4600 Data Points TXT；波长轴可使用不同点数和间隔"),
+        ("输入", "标准 XLSX/CSV：首行 Ex、首列 Em；岛津 CSV；PicoQuant CSV/TXT/DAT；日立 F-4600 Data Points TXT；按文件内容识别文本格式"),
         ("插值", "一阶 |Em−Ex|≤12 nm；二阶 |Em−(2Ex+4)|≤20 nm；沿 Ex 与 Em 双向线性插值取平均，插值负数截 0"),
         ("积分", "负数及 Em≤Ex 记 0；原仪器网格沿用二维梯形法，其他网格以三角网格线性插值并按边界裁剪积分"),
         ("面积归一化", "PhiN_i=Phi_i×(本文件各区域总面积/本文件区域面积_i)；P_i=PhiN_i/sum(PhiN_i)"),
@@ -285,11 +285,11 @@ def main(input_dir: Path) -> int:
         print(f"输入文件夹不存在：{input_dir}")
         return 2
     files = sorted((p for p in input_dir.iterdir() if p.is_file()
-                    and p.suffix.lower() in (".xlsx", ".csv", ".txt")
+                    and p.suffix.lower() in (".xlsx", ".csv", ".txt", ".dat")
                     and not p.name.startswith("~$")),
                    key=lambda p: p.name)
     if not files:
-        print("当前文件夹顶层没有 .xlsx、.csv 或 .txt 文件")
+        print("当前文件夹顶层没有 .xlsx、.csv、.txt 或 .dat 文件")
         return 2
     output = input_dir / "EEM_处理结果"
     matrix_dir = output / "01_插值矩阵"
@@ -300,20 +300,27 @@ def main(input_dir: Path) -> int:
         try:
             ex_axis, em_axis, x = read_eem(path)
             corrected, counts = interpolate(x, ex_axis, em_axis)
-            values, areas = calculate_fri(corrected, ex_axis, em_axis)
             metrics = calculate_metrics(corrected, ex_axis, em_axis)
+            if has_full_fri_range(ex_axis, em_axis):
+                values, areas = calculate_fri(corrected, ex_axis, em_axis)
+                status, note = "成功", ""
+            else:
+                values, areas = [None] * 16, None
+                status, note = "部分完成", "扫描波长范围未覆盖全部五区；已输出矩阵和可计算的荧光指标，FRI 留空"
             output_name = path.name if path.suffix.lower() == ".xlsx" else path.name + ".xlsx"
             save_matrix(matrix_dir / output_name, corrected, ex_axis, em_axis)
             results.append([path.name] + values)
-            area_rows.append((path.name, areas))
+            if areas is not None:
+                area_rows.append((path.name, areas))
             metric_rows.append((path.name, metrics))
-            log.append([path.name, "成功", ""] + counts)
+            log.append([path.name, status, note] + counts)
         except Exception as exc:
             print(f"  失败：{exc}", flush=True)
             log.append([path.name, "失败", str(exc), None, None, None, None])
     save_summary(output / "02_五区积分汇总.xlsx", results, log, area_rows, metric_rows)
     failures = sum(row[1] == "失败" for row in log)
-    print(f"完成：{len(results)} 成功，{failures} 失败。\n输出目录：{output}")
+    partial = sum(row[1] == "部分完成" for row in log)
+    print(f"完成：{len(results) - partial} 成功，{partial} 部分完成，{failures} 失败。\n输出目录：{output}")
     return 1 if failures else 0
 
 
