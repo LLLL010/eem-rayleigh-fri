@@ -11,7 +11,7 @@
 
 ## 自己运行并核对
 
-1. 新建一个文件夹，将 `input/示例数据.xlsx` 与 [Windows 工具包 v1.3.0](../dist/eem-rayleigh-fri-win64-v1.3.0.zip)中的 `启动处理.bat`、`eem_tool.exe` 复制进去。
+1. 新建一个文件夹，将 `input/示例数据.xlsx` 与 [Windows 工具包 v1.4.0](../dist/eem-rayleigh-fri-win64-v1.4.0.zip)中的 `启动处理.bat`、`eem_tool.exe` 复制进去。
 2. 双击批处理文件。输出会出现在这个空文件夹的 `EEM_处理结果` 下。
 3. 输出矩阵应与 `expected/示例数据_插值后.xlsx` 相同；汇总表的一行应与 `expected/示例数据_五区积分.xlsx` 一致。
 

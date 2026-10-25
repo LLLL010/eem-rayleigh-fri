@@ -1,10 +1,10 @@
 # 三维荧光 EEM：瑞利散射插值与五区积分
 
-把一个文件夹中的三维荧光数据批量处理成可绘图的矩阵，并生成五区荧光区域积分（FRI）、BIX、FI、HIX 和特征峰结果。Windows 用户下载工具包、复制到数据文件夹、双击运行即可；支持 XLSX 和 CSV，无需编写代码。
+把一个文件夹中的三维荧光数据批量处理成可绘图的矩阵，并生成五区荧光区域积分（FRI）、BIX、FI、HIX 和特征峰结果。Windows 用户下载工具包、复制到数据文件夹、双击运行即可；支持 XLSX、CSV 和日立 F-4600 导出的 TXT，无需编写代码。
 
 ## 工具能做什么
 
-1. **读取 EEM**：识别标准行列式 XLSX/CSV，以及已验证的岛津 RF 系列直接导出 CSV；按实际波长读取不同点数和不等间隔的 Em、Ex 轴。
+1. **读取 EEM**：识别标准行列式 XLSX/CSV、岛津 RF 系列 CSV 和日立 F-4600 TXT；按实际波长读取不同点数和不等间隔的 Em、Ex 轴。
 2. **处理瑞利散射**：定位一阶和二阶瑞利散射窗口，用窗口外的数据沿 Em、Ex 两个方向线性插值，生成新的 EEM 矩阵。
 3. **计算五区积分**：在插值后的矩阵上计算各区原始积分 `Phi`、面积归一化积分 `PhiN` 和占比 `P`，集中写入一个 XLSX。
 4. **提取常用荧光指标**：计算 BIX、FI、HIX，以及 A、B、C、M、T 特征峰强度；A、C、M 峰同时记录峰值所在 Em。
@@ -15,11 +15,11 @@
 
 ## 三步运行（Windows 64 位）
 
-1. 打开 [Windows 工具包 v1.3.0](dist/eem-rayleigh-fri-win64-v1.3.0.zip)，在文件页面点击 **Download raw file**，下载并解压。
-2. 将 `eem_tool.exe` 和 `启动处理.bat` 一起复制到存放 EEM 数据的文件夹。该文件夹可同时放多个 `.xlsx` 和 `.csv`。
+1. 打开 [Windows 工具包 v1.4.0](dist/eem-rayleigh-fri-win64-v1.4.0.zip)，在文件页面点击 **Download raw file**，下载并解压。
+2. 将 `eem_tool.exe` 和 `启动处理.bat` 一起复制到存放 EEM 数据的文件夹。该文件夹可同时放多个 `.xlsx`、`.csv` 和 `.txt`。
 3. 双击 `启动处理.bat`。处理完毕后打开自动生成的 `EEM_处理结果` 文件夹。
 
-程序读取所在文件夹顶层的所有 XLSX/CSV；输入文件保持原样。程序运行无需安装 Python、R 或 Excel；打开结果 XLSX 需要 Excel 或兼容软件。
+程序读取所在文件夹顶层的所有 XLSX/CSV/TXT；输入文件保持原样。程序运行无需安装 Python、R 或 Excel；打开结果 XLSX 需要 Excel 或兼容软件。
 
 > **Git LFS 下载提示**：工具包以 Git LFS 存储。请在上面的工具包文件页面单独下载；GitHub 首页的 **Code → Download ZIP** 可能只包含工具包的 LFS 指针。
 
@@ -30,9 +30,10 @@
 | 标准 XLSX | A1 空白；第一行 Ex；第一列 Em；内部为荧光强度 | 优先读取 `Sheet1`，否则读取首个工作表；[下载示例](examples/input/示例数据.xlsx) |
 | 标准 CSV | 第一行 Ex；第一列 Em；内部为荧光强度 | 与示例 XLSX 相同的行列方向 |
 | 岛津 RF 系列直接导出 CSV | 第一行 Em；第一列 Ex；内部为荧光强度 | 自动识别并转为标准方向；已用真实岛津 CSV 验证 |
+| 日立 F-4600 直接导出 TXT | 前面是仪器参数与峰列表；`Data Points` 后第一行 Ex、第一列 Em | 按数据区波长表头读取；已用真实日立 TXT 验证 |
 | PicoQuant F300 CSV | 第一行 Em；第一列 Ex；波长以米记录 | 依据提供的格式脚本实现，已通过模拟文件测试 |
 
-输入波长轴可以有不同点数、不等间隔，或整体倒序。五区积分需要 Ex 范围跨过 **250 nm**，Em 范围跨过 **330 nm 和 380 nm**。每条轴须按波长单调排列，且每个位置都有数值。当前版本处理 XLSX/CSV；仪器 TXT/DAT 导出尚未接入。
+输入波长轴可以有不同点数、不等间隔，或整体倒序。五区积分需要 Ex 范围跨过 **250 nm**，Em 范围跨过 **330 nm 和 380 nm**。每条轴须按波长单调排列，且每个位置都有数值。日立须使用仪器导出的文本 `.TXT`，不是二进制 `.FD3`。
 
 ## 输出文件怎么读
 
@@ -44,7 +45,7 @@ EEM_处理结果/
 └─ 02_五区积分汇总.xlsx  所有样本的积分、荧光指标及处理记录
 ```
 
-`01_插值矩阵` 中的 XLSX 与标准输入方向相同：**第一行 Ex、第一列 Em**，其余为处理后的强度。CSV 的结果文件名会保留 `.csv`，再加 `.xlsx`，便于对应原文件。
+`01_插值矩阵` 中的 XLSX 与标准输入方向相同：**第一行 Ex、第一列 Em**，其余为处理后的强度。CSV/TXT 的结果文件名会保留原后缀，再加 `.xlsx`，便于对应原文件。
 
 汇总工作簿中的 `积分结果` 包含：
 
@@ -79,4 +80,4 @@ EEM_处理结果/
 
 ## 源码
 
-入口为 [`eem_tool.py`](eem_tool.py)，CSV 解析在 [`eem_readers.py`](eem_readers.py)，荧光指标计算在 [`eem_metrics.py`](eem_metrics.py)。使用源码需要 Python 3.10 或更新版本，以及 [`requirements.txt`](requirements.txt) 中的依赖；例如在数据文件夹运行 `python /path/to/eem_tool.py`，也可以把数据文件夹路径作为第一个参数传入。示例结果可用 [`scripts/build_example.py`](scripts/build_example.py) 重建。
+入口为 [`eem_tool.py`](eem_tool.py)，CSV/TXT 解析在 [`eem_readers.py`](eem_readers.py)，荧光指标计算在 [`eem_metrics.py`](eem_metrics.py)。使用源码需要 Python 3.10 或更新版本，以及 [`requirements.txt`](requirements.txt) 中的依赖；例如在数据文件夹运行 `python /path/to/eem_tool.py`，也可以把数据文件夹路径作为第一个参数传入。示例结果可用 [`scripts/build_example.py`](scripts/build_example.py) 重建。

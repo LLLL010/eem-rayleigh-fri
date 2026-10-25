@@ -1,4 +1,4 @@
-"""Read CSV EEM exports into (Ex, Em, intensity[Em][Ex]).
+"""Read CSV and Hitachi TXT EEM exports into (Ex, Em, intensity[Em][Ex]).
 
 The instrument-specific rules are adapted from the user-supplied 01_readers.R.
 Ambiguous files use the documented standard orientation: first row Ex, first column Em.
@@ -13,7 +13,7 @@ from pathlib import Path
 def _decode(path: Path) -> str:
     raw = path.read_bytes()
     if not raw or (b"\x00" in raw[:100] and not raw.startswith((b"\xff\xfe", b"\xfe\xff"))):
-        raise ValueError("CSV 文件为空或不是可读取的文本")
+        raise ValueError("文件为空或不是可读取的文本")
     encodings = ("utf-16",) if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else ("utf-8-sig", "gb18030")
     for encoding in encodings:
         try:
@@ -104,4 +104,18 @@ def read_csv_eem(path: Path) -> tuple[list[float], list[float], list[list[float]
     else:
         # Standard CSV: first row Ex, first column Em.
         ex, em, x = first, second, matrix
+    return ex, em, x
+
+
+def read_hitachi_txt(path: Path) -> tuple[list[float], list[float], list[list[float]]]:
+    """Read the tab-delimited Data Points block in an F-4600 text export."""
+    lines = _decode(path).splitlines()
+    marker = next((i for i, line in enumerate(lines)
+                   if line.strip().casefold() == "data points"), None)
+    if marker is None:
+        raise ValueError("找不到 Data Points 数据段；请使用仪器导出的文本 TXT")
+    rows = _rows(lines[marker + 1:], "\t")
+    header = _header_at(rows)
+    # This export already has Em rows and Ex columns, so no transpose is needed.
+    ex, em, x = _matrix(rows, header)
     return ex, em, x
